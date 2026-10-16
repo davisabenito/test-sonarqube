@@ -1,4 +1,4 @@
-name: SonarQube Scan
+name: SonarCloud Scan
 
 on:
   push:
@@ -15,19 +15,15 @@ on:
           - 'TRUE'
           - 'FALSE'
         default: 'TRUE'
-      project_key:
-        description: 'SonarQube Project Key'
-        required: true
-        type: string
-        default: 'pruebas-sonarqube'
 
 env:
   IS_COVERAGE: ${{ github.event.inputs.is_coverage || 'TRUE' }}
-  PROJECT_KEY: ${{ github.event.inputs.project_key || 'pruebas-sonarqube' }}
+  SONAR_ORGANIZATION: davisabenito-github
+  SONAR_PROJECT_KEY: prueba_calidad
 
 jobs:
-  sonarqube:
-    name: SonarQube Scan
+  sonarcloud:
+    name: SonarCloud Scan
     runs-on: ubuntu-latest
 
     steps:
@@ -51,15 +47,15 @@ jobs:
         run: |
           pytest --cov=data_cleaning --cov-report=xml --cov-report=term-missing --cov-fail-under=30
 
-      - name: SonarQube Scan
+      - name: SonarCloud Scan
         uses: sonarsource/sonarqube-scan-action@master
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
         with:
           args: >
-            -Dsonar.projectKey=${{ env.PROJECT_KEY }}
-            -Dsonar.projectName=Pruebas SonarQube
+            -Dsonar.organization=${{ env.SONAR_ORGANIZATION }}
+            -Dsonar.projectKey=${{ env.SONAR_PROJECT_KEY }}
+            -Dsonar.projectName=Pruebas SonarCloud
             -Dsonar.projectVersion=1.0
             -Dsonar.sources=data_cleaning.py
             -Dsonar.tests=test_data_cleaning.py
@@ -69,15 +65,14 @@ jobs:
             -Dsonar.python.version=3.9
             -Dsonar.python.coverage.reportPaths=coverage.xml
             -Dsonar.coverage.jacoco.xmlReportPaths=coverage.xml
-            -Dsonar.qualitygate.wait=true
 
       - name: Check Coverage (if IS_COVERAGE=TRUE)
         if: env.IS_COVERAGE == 'TRUE'
         run: |
-          echo "Validando coverage en SonarQube..."
-          # Obtener métricas de coverage desde SonarQube
+          echo "Validando coverage en SonarCloud..."
+          # Obtener métricas de coverage desde SonarCloud
           COVERAGE=$(curl -s -u "${{ secrets.SONAR_TOKEN }}:" \
-            "${{ secrets.SONAR_HOST_URL }}/api/measures/component?component=${{ env.PROJECT_KEY }}&metricKeys=coverage" \
+            "https://sonarcloud.io/api/measures/component?component=${{ env.SONAR_PROJECT_KEY }}&metricKeys=coverage" \
             | jq -r '.component.measures[0].value')
           echo "Coverage actual: ${COVERAGE}%"
           if (( $(echo "$COVERAGE < 90" | bc -l) )); then
@@ -90,30 +85,30 @@ jobs:
       - name: Check Severity (if IS_COVERAGE=FALSE)
         if: env.IS_COVERAGE == 'FALSE'
         run: |
-          echo "Validando severidad de issues en SonarQube..."
-          # Obtener métricas de severidad desde SonarQube
+          echo "Validando severidad de issues en SonarCloud..."
+          # Obtener métricas de severidad desde SonarCloud
           echo "Fetching severity metrics..."
           METRICS=$(curl -s -u "${{ secrets.SONAR_TOKEN }}:" \
-            "${{ secrets.SONAR_HOST_URL }}/api/measures/component?component=${{ env.PROJECT_KEY }}&metricKeys=alert_status,bugs,vulnerabilities,code_smells,sqale_rating,reliability_rating,security_rating")
+            "https://sonarcloud.io/api/measures/component?component=${{ env.SONAR_PROJECT_KEY }}&metricKeys=alert_status,bugs,vulnerabilities,code_smells,sqale_rating,reliability_rating,security_rating")
 
           echo "Métricas obtenidas:"
           echo "$METRICS" | jq '.'
 
           # Obtener número de issues por severidad
           BLOCKER=$(curl -s -u "${{ secrets.SONAR_TOKEN }}:" \
-            "${{ secrets.SONAR_HOST_URL }}/api/issues/search?componentKeys=${{ env.PROJECT_KEY }}&severities=BLOCKER&ps=500" \
+            "https://sonarcloud.io/api/issues/search?componentKeys=${{ env.SONAR_PROJECT_KEY }}&severities=BLOCKER&ps=500" \
             | jq -r '.total')
           CRITICAL=$(curl -s -u "${{ secrets.SONAR_TOKEN }}:" \
-            "${{ secrets.SONAR_HOST_URL }}/api/issues/search?componentKeys=${{ env.PROJECT_KEY }}&severities=CRITICAL&ps=500" \
+            "https://sonarcloud.io/api/issues/search?componentKeys=${{ env.SONAR_PROJECT_KEY }}&severities=CRITICAL&ps=500" \
             | jq -r '.total')
           MAJOR=$(curl -s -u "${{ secrets.SONAR_TOKEN }}:" \
-            "${{ secrets.SONAR_HOST_URL }}/api/issues/search?componentKeys=${{ env.PROJECT_KEY }}&severities=MAJOR&ps=500" \
+            "https://sonarcloud.io/api/issues/search?componentKeys=${{ env.SONAR_PROJECT_KEY }}&severities=MAJOR&ps=500" \
             | jq -r '.total')
           MINOR=$(curl -s -u "${{ secrets.SONAR_TOKEN }}:" \
-            "${{ secrets.SONAR_HOST_URL }}/api/issues/search?componentKeys=${{ env.PROJECT_KEY }}&severities=MINOR&ps=500" \
+            "https://sonarcloud.io/api/issues/search?componentKeys=${{ env.SONAR_PROJECT_KEY }}&severities=MINOR&ps=500" \
             | jq -r '.total')
           INFO=$(curl -s -u "${{ secrets.SONAR_TOKEN }}:" \
-            "${{ secrets.SONAR_HOST_URL }}/api/issues/search?componentKeys=${{ env.PROJECT_KEY }}&severities=INFO&ps=500" \
+            "https://sonarcloud.io/api/issues/search?componentKeys=${{ env.SONAR_PROJECT_KEY }}&severities=INFO&ps=500" \
             | jq -r '.total')
 
           echo ""
@@ -169,9 +164,8 @@ jobs:
             echo "✅ El Quality Gate pasó por severidad"
           fi
 
-      - name: SonarQube Quality Gate check
+      - name: SonarCloud Quality Gate check
         uses: sonarsource/sonarqube-quality-gate-action@master
         timeout-minutes: 5
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
