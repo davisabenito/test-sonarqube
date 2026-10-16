@@ -48,23 +48,10 @@ jobs:
           pytest --cov=data_cleaning --cov-report=xml --cov-report=term-missing --cov-fail-under=30
 
       - name: SonarCloud Scan
-        uses: sonarsource/sonarqube-scan-action@master
+        uses: SonarSource/sonarcloud-github-action@master
         env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        with:
-          args: >
-            -Dsonar.organization=${{ env.SONAR_ORGANIZATION }}
-            -Dsonar.projectKey=${{ env.SONAR_PROJECT_KEY }}
-            -Dsonar.projectName=Pruebas SonarCloud
-            -Dsonar.projectVersion=1.0
-            -Dsonar.sources=data_cleaning.py
-            -Dsonar.tests=test_data_cleaning.py
-            -Dsonar.sourceEncoding=UTF-8
-            -Dsonar.exclusions=venv/**,**/*.csv,**/*.md,.git/**,.github/**,pytest.ini,coverage.xml,.coverage
-            -Dsonar.test.exclusions=test_*.py
-            -Dsonar.python.version=3.9
-            -Dsonar.python.coverage.reportPaths=coverage.xml
-            -Dsonar.coverage.jacoco.xmlReportPaths=coverage.xml
 
       - name: Check Coverage (if IS_COVERAGE=TRUE)
         if: env.IS_COVERAGE == 'TRUE'
