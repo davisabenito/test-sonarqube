@@ -1,0 +1,177 @@
+name: SonarQube Scan
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+    inputs:
+      is_coverage:
+        description: 'Validar coverage (TRUE) o severidad (FALSE)'
+        required: true
+        type: choice
+        options:
+          - 'TRUE'
+          - 'FALSE'
+        default: 'TRUE'
+      project_key:
+        description: 'SonarQube Project Key'
+        required: true
+        type: string
+        default: 'pruebas-sonarqube'
+
+env:
+  IS_COVERAGE: ${{ github.event.inputs.is_coverage || 'TRUE' }}
+  PROJECT_KEY: ${{ github.event.inputs.project_key || 'pruebas-sonarqube' }}
+
+jobs:
+  sonarqube:
+    name: SonarQube Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Importante para el análisis correcto
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pandas numpy pytest pytest-cov
+
+      - name: Run tests with coverage (if IS_COVERAGE=TRUE)
+        if: env.IS_COVERAGE == 'TRUE'
+        run: |
+          pytest --cov=data_cleaning --cov-report=xml --cov-report=term-missing --cov-fail-under=30
+
+      - name: SonarQube Scan
+        uses: sonarsource/sonarqube-scan-action@master
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        with:
+          args: >
+            -Dsonar.projectKey=${{ env.PROJECT_KEY }}
+            -Dsonar.projectName=Pruebas SonarQube
+            -Dsonar.projectVersion=1.0
+            -Dsonar.sources=data_cleaning.py
+            -Dsonar.tests=test_data_cleaning.py
+            -Dsonar.sourceEncoding=UTF-8
+            -Dsonar.exclusions=venv/**,**/*.csv,**/*.md,.git/**,.github/**,pytest.ini,coverage.xml,.coverage
+            -Dsonar.test.exclusions=test_*.py
+            -Dsonar.python.version=3.9
+            -Dsonar.python.coverage.reportPaths=coverage.xml
+            -Dsonar.coverage.jacoco.xmlReportPaths=coverage.xml
+            -Dsonar.qualitygate.wait=true
+
+      - name: Check Coverage (if IS_COVERAGE=TRUE)
+        if: env.IS_COVERAGE == 'TRUE'
+        run: |
+          echo "Validando coverage en SonarQube..."
+          # Obtener métricas de coverage desde SonarQube
+          COVERAGE=$(curl -s -u "${{ secrets.SONAR_TOKEN }}:" \
+            "${{ secrets.SONAR_HOST_URL }}/api/measures/component?component=${{ env.PROJECT_KEY }}&metricKeys=coverage" \
+            | jq -r '.component.measures[0].value')
+          echo "Coverage actual: ${COVERAGE}%"
+          if (( $(echo "$COVERAGE < 90" | bc -l) )); then
+            echo "❌ Coverage ${COVERAGE}% es menor al 90% requerido"
+            exit 1
+          else
+            echo "✅ Coverage ${COVERAGE}% cumple con el requerimiento de 90%"
+          fi
+
+      - name: Check Severity (if IS_COVERAGE=FALSE)
+        if: env.IS_COVERAGE == 'FALSE'
+        run: |
+          echo "Validando severidad de issues en SonarQube..."
+          # Obtener métricas de severidad desde SonarQube
+          echo "Fetching severity metrics..."
+          METRICS=$(curl -s -u "${{ secrets.SONAR_TOKEN }}:" \
+            "${{ secrets.SONAR_HOST_URL }}/api/measures/component?component=${{ env.PROJECT_KEY }}&metricKeys=alert_status,bugs,vulnerabilities,code_smells,sqale_rating,reliability_rating,security_rating")
+
+          echo "Métricas obtenidas:"
+          echo "$METRICS" | jq '.'
+
+          # Obtener número de issues por severidad
+          BLOCKER=$(curl -s -u "${{ secrets.SONAR_TOKEN }}:" \
+            "${{ secrets.SONAR_HOST_URL }}/api/issues/search?componentKeys=${{ env.PROJECT_KEY }}&severities=BLOCKER&ps=500" \
+            | jq -r '.total')
+          CRITICAL=$(curl -s -u "${{ secrets.SONAR_TOKEN }}:" \
+            "${{ secrets.SONAR_HOST_URL }}/api/issues/search?componentKeys=${{ env.PROJECT_KEY }}&severities=CRITICAL&ps=500" \
+            | jq -r '.total')
+          MAJOR=$(curl -s -u "${{ secrets.SONAR_TOKEN }}:" \
+            "${{ secrets.SONAR_HOST_URL }}/api/issues/search?componentKeys=${{ env.PROJECT_KEY }}&severities=MAJOR&ps=500" \
+            | jq -r '.total')
+          MINOR=$(curl -s -u "${{ secrets.SONAR_TOKEN }}:" \
+            "${{ secrets.SONAR_HOST_URL }}/api/issues/search?componentKeys=${{ env.PROJECT_KEY }}&severities=MINOR&ps=500" \
+            | jq -r '.total')
+          INFO=$(curl -s -u "${{ secrets.SONAR_TOKEN }}:" \
+            "${{ secrets.SONAR_HOST_URL }}/api/issues/search?componentKeys=${{ env.PROJECT_KEY }}&severities=INFO&ps=500" \
+            | jq -r '.total')
+
+          echo ""
+          echo "=== Resumen de Issues por Severidad ==="
+          echo "Blocker: $BLOCKER"
+          echo "Critical: $CRITICAL"
+          echo "Major: $MAJOR"
+          echo "Minor: $MINOR"
+          echo "Info: $INFO"
+          echo ""
+
+          # Validar umbrales
+          ERROR_COUNT=0
+
+          if [ "$BLOCKER" -gt 1 ]; then
+            echo "❌ FAIL: Blocker ($BLOCKER) excede el máximo permitido (1)"
+            ERROR_COUNT=$((ERROR_COUNT + 1))
+          else
+            echo "✅ PASS: Blocker ($BLOCKER) dentro del límite (≤1)"
+          fi
+
+          if [ "$CRITICAL" -gt 1 ]; then
+            echo "❌ FAIL: Critical ($CRITICAL) excede el máximo permitido (1)"
+            ERROR_COUNT=$((ERROR_COUNT + 1))
+          else
+            echo "✅ PASS: Critical ($CRITICAL) dentro del límite (≤1)"
+          fi
+
+          if [ "$MAJOR" -gt 2 ]; then
+            echo "❌ FAIL: Major ($MAJOR) excede el máximo permitido (2)"
+            ERROR_COUNT=$((ERROR_COUNT + 1))
+          else
+            echo "✅ PASS: Major ($MAJOR) dentro del límite (≤2)"
+          fi
+
+          if [ "$MINOR" -gt 0 ]; then
+            echo "⚠️  WARNING: Minor ($MINOR) debería ser 0"
+          else
+            echo "✅ PASS: Minor ($MINOR) es 0"
+          fi
+
+          if [ "$INFO" -gt 0 ]; then
+            echo "ℹ️  INFO: Info ($INFO) presente (no bloqueante)"
+          else
+            echo "✅ PASS: Info ($INFO) es 0"
+          fi
+
+          echo ""
+          if [ $ERROR_COUNT -gt 0 ]; then
+            echo "❌ El Quality Gate falló por severidad"
+            exit 1
+          else
+            echo "✅ El Quality Gate pasó por severidad"
+          fi
+
+      - name: SonarQube Quality Gate check
+        uses: sonarsource/sonarqube-quality-gate-action@master
+        timeout-minutes: 5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
