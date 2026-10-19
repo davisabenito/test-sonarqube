@@ -45,7 +45,17 @@ jobs:
       - name: Run tests with coverage (if IS_COVERAGE=TRUE)
         if: env.IS_COVERAGE == 'TRUE'
         run: |
-          pytest --cov=data_cleaning --cov-report=xml --cov-report=term-missing --cov-fail-under=30
+          python -m pytest test_data_cleaning.py --cov=data_cleaning --cov-report=xml --cov-report=term-missing --cov-fail-under=30
+
+      - name: Verify coverage.xml exists (if IS_COVERAGE=TRUE)
+        if: env.IS_COVERAGE == 'TRUE'
+        run: |
+          if [ ! -f coverage.xml ]; then
+            echo "❌ coverage.xml no se generó"
+            exit 1
+          fi
+          echo "✅ coverage.xml generado correctamente"
+          head -20 coverage.xml
 
       - name: SonarCloud Scan
         uses: SonarSource/sonarcloud-github-action@master
@@ -56,12 +66,22 @@ jobs:
       - name: Check Coverage (if IS_COVERAGE=TRUE)
         if: env.IS_COVERAGE == 'TRUE'
         run: |
+          echo "Esperando 30 segundos para que SonarCloud procese el coverage..."
+          sleep 30
           echo "Validando coverage en SonarCloud..."
           # Obtener métricas de coverage desde SonarCloud
           COVERAGE=$(curl -s -u "${{ secrets.SONAR_TOKEN }}:" \
             "https://sonarcloud.io/api/measures/component?component=${{ env.SONAR_PROJECT_KEY }}&metricKeys=coverage" \
             | jq -r '.component.measures[0].value')
           echo "Coverage actual: ${COVERAGE}%"
+          if [ "$COVERAGE" = "null" ] || [ -z "$COVERAGE" ]; then
+            echo "❌ No se pudo obtener el coverage desde SonarCloud (valor: $COVERAGE)"
+            echo "Posibles causas:"
+            echo "- El análisis aún no terminó de procesar"
+            echo "- El coverage.xml no se generó correctamente"
+            echo "- El project key es incorrecto"
+            exit 1
+          fi
           if (( $(echo "$COVERAGE < 90" | bc -l) )); then
             echo "❌ Coverage ${COVERAGE}% es menor al 90% requerido"
             exit 1
