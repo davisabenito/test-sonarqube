@@ -66,17 +66,49 @@ Valida que el coverage de código sea ≥ 90%.
 
 Si el coverage es menor a 90%, el workflow fallará.
 
+**Steps ejecutados:**
+- Run tests with coverage
+- Verify coverage.xml
+- SonarCloud Scan
+- Debug SonarCloud API Response
+- Check coverage from SonarCloud
+- SonarCloud Quality Gate
+
 ### Modo 2: Validación de Severidad (IS_COVERAGE=FALSE)
 
-Valida que los issues por severidad estén dentro de los límites:
+Valida que los issues por severidad estén dentro de los límites usando **dos herramientas**:
 
-| Severidad | Máximo Permitido | Acción si excede |
-|-----------|------------------|------------------|
-| Blocker | 1 | ❌ Fails |
-| Critical | 1 | ❌ Fails |
-| Major | 2 | ❌ Fails |
-| Minor | 0 | ⚠️ Warning |
-| Info | 0 | ℹ️ Info (no bloqueante) |
+#### A. Validación de SonarCloud (Validate SonarCloud severity thresholds)
+
+Usa las severidades nativas de SonarCloud:
+
+| Severidad SonarCloud | Máximo Permitido | Acción si excede |
+|---------------------|------------------|------------------|
+| BLOCKER | 1 | ❌ Fails |
+| CRITICAL | 1 | ❌ Fails |
+| MAJOR | 2 | ❌ Fails |
+| MINOR | 0 | ⚠️ Warning |
+| INFO | 0 | ℹ️ Info (no bloqueante) |
+
+**Nota:** SonarCloud usa severidades BLOCKER/CRITICAL/MAJOR/MINOR/INFO, mientras que Bandit usa HIGH/MEDIUM/LOW.
+
+#### B. Validación de Bandit (Validate Bandit thresholds)
+
+Usa las severidades de Bandit (security scanner):
+
+| Severidad Bandit | Máximo Permitido | Acción si excede |
+|------------------|------------------|------------------|
+| HIGH | 2 | ❌ Fails |
+| MEDIUM | 5 | ❌ Fails |
+| LOW | Sin límite | ℹ️ Info |
+
+**Steps ejecutados:**
+- Run Bandit Security Scan
+- SonarCloud Scan
+- Debug SonarCloud API Response
+- Validate SonarCloud severity thresholds
+- Validate Bandit thresholds
+- SonarCloud Quality Gate
 
 ## 📈 Ver Resultados
 
@@ -113,22 +145,41 @@ Error: Process completed with exit code 1
 
 ### IS_COVERAGE=FALSE
 
+#### Validación de SonarCloud Severities
+
 ```
-Validando severidad de issues en SonarCloud...
-=== Resumen de Issues por Severidad ===
-Blocker: 0
-Critical: 5
-Major: 15
-Minor: 10
-Info: 3
+=== Validando umbrales de severidad de SonarCloud ===
+Umbrales configurados:
+  BLOCKER ≤ 1
+  CRITICAL ≤ 1
+  MAJOR ≤ 2
+  MINOR = 0 (warning)
+  INFO = 0 (info)
 
-✅ PASS: Blocker (0) dentro del límite (≤1)
-❌ FAIL: Critical (5) excede el máximo permitido (1)
-✅ PASS: Major (15) dentro del límite (≤2)
-⚠️  WARNING: Minor (10) debería ser 0
-ℹ️  INFO: Info (3) presente (no bloqueante)
+=== Issues por severidad ===
+BLOCKER: 0 (máximo: 1)
+CRITICAL: 5 (máximo: 1)
+MAJOR: 15 (máximo: 2)
+MINOR: 10 (esperado: 0)
+INFO: 3 (esperado: 0)
 
-❌ El Quality Gate falló por severidad
+✅ BLOCKER: 0 dentro del límite (≤1)
+❌ CRITICAL: 5 excede el máximo permitido (1)
+❌ MAJOR: 15 excede el máximo permitido (2)
+⚠️  MINOR: 10 debería ser 0
+ℹ️  INFO: 3 presente (no bloqueante)
+
+❌ Los umbrales de severidad de SonarCloud no cumplen los requisitos
+```
+
+#### Validación de Bandit
+
+```
+Bandit total: 8
+HIGH: 1 (máximo permitido: 2)
+MEDIUM: 7 (máximo permitido: 5)
+
+❌ Bandit excede los umbrales de severidad.
 ```
 
 ## 🛠️ Modificar Umbrales
@@ -138,17 +189,25 @@ Para cambiar los umbrales de validación, edita `.github/workflows/sonarqube-sca
 ### Cambiar Umbral de Coverage
 
 ```yaml
-# En el step "Check Coverage"
-if (( $(echo "$COVERAGE < 90" | bc -l) )); then  # Cambia 90 por tu umbral
+# En el step "Check coverage from SonarCloud"
+if awk -v c="$COVERAGE" 'BEGIN { exit !(c < 90) }'; then  # Cambia 90 por tu umbral
 ```
 
-### Cambiar Umbrales de Severidad
+### Cambiar Umbrales de Severidad SonarCloud
 
 ```yaml
-# En el step "Check Severity"
+# En el step "Validate SonarCloud severity thresholds"
 if [ "$BLOCKER" -gt 1 ]; then  # Cambia 1 por tu umbral
 if [ "$CRITICAL" -gt 1 ]; then  # Cambia 1 por tu umbral
 if [ "$MAJOR" -gt 2 ]; then  # Cambia 2 por tu umbral
+```
+
+### Cambiar Umbrales de Severidad Bandit
+
+```yaml
+# En el step "Validate Bandit thresholds"
+if [ "$HIGH" -gt 2 ]; then  # Cambia 2 por tu umbral
+if [ "$MEDIUM" -gt 5 ]; then  # Cambia 5 por tu umbral
 ```
 
 ## 📁 Estructura del Proyecto
@@ -238,3 +297,40 @@ Verifica que:
 - El coverage actual es ~47%, por debajo del 90% requerido
 - El Quality Gate está configurado para fail cuando no cumple los umbrales
 - Puedes ajustar los umbrales según tus necesidades
+
+## 🔀 Diferencia entre SonarCloud y Bandit Severities
+
+El workflow valida severidades de **dos herramientas diferentes** cuando `IS_COVERAGE=FALSE`:
+
+### SonarCloud Severities (Quality/Code Smells/Security)
+
+| SonarCloud | Equivalente Genérico | Descripción |
+|------------|---------------------|-------------|
+| BLOCKER | Critical | Debe corregirse inmediatamente |
+| CRITICAL | High | Problema grave |
+| MAJOR | Medium | Problema importante |
+| MINOR | Low | Problema menor |
+| INFO | Info | Informativo |
+
+SonarCloud analiza:
+- Code Smells (mantenibilidad)
+- Bugs (funcionalidad)
+- Vulnerabilities (seguridad)
+- Security Hotspots (seguridad)
+
+### Bandit Severities (Security Only)
+
+| Bandit | Equivalente Genérico | Descripción |
+|--------|---------------------|-------------|
+| HIGH | Critical | Vulnerabilidad crítica |
+| MEDIUM | Medium | Vulnerabilidad media |
+| LOW | Low | Vulnerabilidad menor |
+
+Bandit analiza **solo** vulnerabilidades de seguridad en Python.
+
+### ¿Por qué dos validaciones?
+
+1. **SonarCloud**: Análisis completo de calidad (code smells, bugs, duplications, coverage, seguridad)
+2. **Bandit**: Análisis especializado en seguridad Python, más estricto para vulnerabilidades
+
+Puedes configurar umbrales diferentes para cada herramienta según tus políticas de calidad y seguridad.
