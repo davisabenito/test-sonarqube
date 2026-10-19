@@ -17,7 +17,7 @@ on:
         default: 'TRUE'
 
 env:
-  IS_COVERAGE: ${{ github.event.inputs.is_coverage || 'TRUE' }}
+  IS_COVERAGE: ${{ github.event.inputs.is_coverage || 'FALSE' }}
   SONAR_ORGANIZATION: davisabenito-github
   SONAR_PROJECT_KEY: prueba_calidad
 
