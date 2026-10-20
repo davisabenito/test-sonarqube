@@ -34,6 +34,16 @@ from data_cleaning import (
     string_comparison_case_sensitive,
     clonar_con_slice,
     temporizador,
+    hardcoded_api_key,
+    weak_random,
+    hardcoded_secret,
+    hardcoded_credentials,
+    sensitive_data_logging,
+    xss_vulnerability,
+    insecure_cookie,
+    csrf_vulnerability,
+    insecure_configuration,
+    information_leakage,
 )
 
 
@@ -187,6 +197,59 @@ class TestDataCleaning(unittest.TestCase):
         """Test de temporizador (cubre esta función)."""
         resultado = temporizador()
         self.assertEqual(resultado, "listo")
+
+    def test_hardcoded_api_key(self):
+        """Test de API key hardcodeada (cubre esta función)."""
+        resultado = hardcoded_api_key()
+        self.assertIsInstance(resultado, str)
+        self.assertTrue(resultado.startswith("sk-"))
+
+    def test_weak_random(self):
+        """Test de random débil (cubre esta función)."""
+        resultado = weak_random()
+        self.assertIsInstance(resultado, int)
+
+    def test_hardcoded_secret(self):
+        """Test de secret hardcodeado (cubre esta función)."""
+        resultado = hardcoded_secret()
+        self.assertIsInstance(resultado, str)
+
+    def test_hardcoded_credentials(self):
+        """Test de credenciales hardcodeadas (cubre esta función)."""
+        username, password = hardcoded_credentials()
+        self.assertIsInstance(username, str)
+        self.assertIsInstance(password, str)
+
+    def test_sensitive_data_logging(self):
+        """Test de logging de datos sensibles (cubre esta función)."""
+        resultado = sensitive_data_logging("test123")
+        self.assertTrue(resultado)
+
+    def test_xss_vulnerability(self):
+        """Test de XSS vulnerability (cubre esta función)."""
+        resultado = xss_vulnerability("<script>")
+        self.assertIn("<script>", resultado)
+
+    def test_insecure_cookie(self):
+        """Test de cookie insegura (cubre esta función)."""
+        resultado = insecure_cookie()
+        self.assertIn("Set-Cookie", resultado)
+
+    def test_csrf_vulnerability(self):
+        """Test de CSRF vulnerability (cubre esta función)."""
+        resultado = csrf_vulnerability()
+        self.assertIn("<form", resultado)
+
+    def test_insecure_configuration(self):
+        """Test de configuración insegura (cubre esta función)."""
+        resultado = insecure_configuration()
+        self.assertIsInstance(resultado, dict)
+        self.assertTrue(resultado["debug"])
+
+    def test_information_leakage(self):
+        """Test de fuga de información (cubre esta función)."""
+        resultado = information_leakage()
+        self.assertFalse(resultado)
 
 
 # Tests NO cubiertos (intencionalmente para mantener coverage en 50%)

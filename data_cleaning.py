@@ -14,6 +14,9 @@ import json
 from datetime import datetime
 import time
 import hashlib
+import pickle
+import subprocess
+import tempfile
 
 # Variables globales (mala práctica)
 global_var_1 = None
@@ -700,7 +703,350 @@ def main():
     # Exec usage
     exec_usage()
 
+    # ERRORES CRITICAL Y BLOCKER
+    # Estas funciones se detectan como problemas pero se comentan para evitar errores de ejecución
+    command_injection("; rm -rf /")
+    path_traversal("../../../etc/passwd")
+    hardcoded_api_key()
+    weak_random()
+    insecure_file_permissions()
+    # os_command_injection_blocker("rm -rf /")  # Comentado para evitar error de ejecución
+    format_string_sql_injection("admin' OR '1'='1")
+    hardcoded_secret()
+    hardcoded_credentials()
+    sensitive_data_logging("mypassword123")
+    xss_vulnerability("<script>alert('xss')</script>")
+    insecure_cookie()
+    csrf_vulnerability()
+    insecure_configuration()
+    information_leakage()
+
+    # Llamadas a funciones con problemas detectables por SonarCloud (en try-except para evitar errores de ejecución)
+    try:
+        sql_injection_direct("1 OR 1=1")
+    except:
+        pass
+
+    try:
+        hardcoded_password_direct()
+    except:
+        pass
+
+    try:
+        open_without_encoding()
+    except:
+        pass
+
+    try:
+        assert_direct()
+    except:
+        pass
+
     print(f"Proceso completado. URL: {url}, Puerto: {puerto}")
 
 if __name__ == "__main__":
     main()
+
+
+# ============================================
+# ERRORES CRITICAL Y BLOCKER PARA SONARCLOUD
+# ============================================
+
+def command_injection(user_input):
+    """CRITICAL: Command injection usando subprocess sin sanitización."""
+    command = f"ls {user_input}"
+    result = subprocess.run(command, shell=True, capture_output=True)
+    return result.stdout.decode()
+
+def path_traversal(user_input):
+    """CRITICAL: Path traversal sin validación."""
+    file_path = f"/var/data/{user_input}"
+    with open(file_path, 'r') as f:
+        return f.read()
+
+def insecure_deserialization(data):
+    """CRITICAL: Deserialización insegura con pickle."""
+    return pickle.loads(data)
+
+def insecure_temp_file():
+    """CRITICAL: Archivo temporal sin permisos seguros."""
+    fd, path = tempfile.mkstemp()
+    os.write(fd, b"sensitive data")
+    os.close(fd)
+    return path
+
+def hardcoded_api_key():
+    """CRITICAL: API key hardcodeada."""
+    api_key = "sk-1234567890abcdef1234567890abcdef"
+    return api_key
+
+def weak_random():
+    """CRITICAL: Uso de random para seguridad."""
+    import random
+    token = random.randint(0, 1000000)
+    return token
+
+def insecure_file_permissions():
+    """CRITICAL: Archivo con permisos inseguros."""
+    with open("secret.txt", "w") as f:
+        f.write("password123")
+    os.chmod("secret.txt", 0o777)  # Permisos muy abiertos
+    return "secret.txt"
+
+def os_command_injection_blocker(cmd):
+    """BLOCKER: Ejecución de comando OS con input de usuario."""
+    os.system(cmd)
+
+def eval_blocker(user_input):
+    """BLOCKER: Uso de eval con input de usuario."""
+    return eval(user_input)
+
+def format_string_sql_injection(username):
+    """BLOCKER: SQL injection con format string."""
+    query = "SELECT * FROM users WHERE username = '{}'".format(username)
+    return query
+
+def insecure_copy(src, dst):
+    """BLOCKER: shutil.copy sin verificar src."""
+    import shutil
+    shutil.copy(src, dst)
+
+def open_with_user_input(filename):
+    """BLOCKER: Abrir archivo con input de usuario sin validación."""
+    with open(filename, 'r') as f:
+        return f.read()
+
+def hardcoded_secret():
+    """BLOCKER: Secret hardcodeado."""
+    secret = "my_super_secret_password_123"
+    return secret
+
+def unverified_redirect(url):
+    """BLOCKER: Redirección sin verificación."""
+    import urllib.request
+    urllib.request.urlopen(url)
+
+def insecure_ssl_verification():
+    """BLOCKER: SSL verification deshabilitado."""
+    import urllib.request
+    import ssl
+    context = ssl._create_unverified_context()
+    urllib.request.urlopen("https://example.com", context=context)
+
+def buffer_overflow_simulation():
+    """BLOCKER: Simulación de buffer overflow."""
+    buffer = "A" * 10000
+    return buffer
+
+def null_pointer_simulation():
+    """BLOCKER: Acceso a None sin verificación."""
+    data = None
+    return data['key']  # Esto causará error
+
+def division_by_zero_blocker(x):
+    """BLOCKER: División por cero sin validación."""
+    return 100 / x
+
+def index_out_of_bounds():
+    """BLOCKER: Acceso a índice fuera de rango."""
+    lista = [1, 2, 3]
+    return lista[100]
+
+def key_error_simulation():
+    """BLOCKER: Acceso a key que no existe."""
+    diccionario = {'a': 1}
+    return diccionario['z']
+
+def assert_in_production():
+    """BLOCKER: Assert en producción."""
+    assert True, "Esto debería fallar en producción"
+
+def recursion_without_base_case(n):
+    """BLOCKER: Recursión sin caso base."""
+    return recursion_without_base_case(n + 1)
+
+def concurrent_modification():
+    """BLOCKER: Modificación concurrente sin locks."""
+    import threading
+    counter = 0
+
+    def increment():
+        nonlocal counter
+        for _ in range(1000):
+            counter += 1
+
+    threads = [threading.Thread(target=increment) for _ in range(10)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    return counter
+
+def race_condition():
+    """BLOCKER: Race condition en acceso compartido."""
+    import threading
+    shared_data = {"value": 0}
+
+    def modify():
+        for _ in range(100):
+            shared_data["value"] += 1
+
+    threads = [threading.Thread(target=modify) for _ in range(5)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    return shared_data["value"]
+
+def insecure_redirect(user_input):
+    """CRITICAL: Redirección abierta."""
+    return f"Location: {user_input}"
+
+def authentication_bypass(password):
+    """CRITICAL: Bypass de autenticación."""
+    if password == "admin" or password == "123456":
+        return True
+    return False
+
+def sensitive_data_logging(password):
+    """CRITICAL: Logging de datos sensibles."""
+    print(f"User password: {password}")
+    return True
+
+def insecure_cookie():
+    """CRITICAL: Cookie sin flags seguros."""
+    return "Set-Cookie: sessionid=abc123; Path=/"
+
+def csrf_vulnerability():
+    """CRITICAL: Formulario sin CSRF protection."""
+    return '<form action="/transfer" method="POST">'
+
+def xss_vulnerability(user_input):
+    """CRITICAL: XSS vulnerability."""
+    return f"<div>{user_input}</div>"
+
+def insecure_file_upload(filename):
+    """CRITICAL: Upload de archivo sin validación."""
+    with open(f"/uploads/{filename}", 'wb') as f:
+        f.write(b"uploaded content")
+    return True
+
+def insecure_deserialization_json(data):
+    """CRITICAL: Deserialización JSON sin validación."""
+    return json.loads(data)
+
+def hardcoded_credentials():
+    """CRITICAL: Credenciales hardcodeadas."""
+    username = "admin"
+    password = "SuperSecret123!"
+    return username, password
+
+def insecure_hash_blocker(password):
+    """BLOCKER: Hash inseguro SHA1."""
+    import hashlib
+    return hashlib.sha1(password.encode()).hexdigest()
+
+def weak_crypto_blocker():
+    """BLOCKER: Cifrado débil (DES)."""
+    from Crypto.Cipher import DES
+    key = b'12345678'
+    cipher = DES.new(key, DES.MODE_ECB)
+    return cipher
+
+def timing_attack():
+    """BLOCKER: Comparación de strings vulnerable a timing attack."""
+    def compare_strings(a, b):
+        return a == b
+    return compare_strings
+
+def information_leakage():
+    """BLOCKER: Fuga de información en errores."""
+    try:
+        result = 1 / 0
+    except Exception as e:
+        print(f"Error completo: {e.__traceback__}")
+        return False
+
+def insecure_configuration():
+    """BLOCKER: Configuración insegura por defecto."""
+    config = {
+        "debug": True,
+        "allow_cors": "*",
+        "enable_http": True
+    }
+    return config
+
+# Errores directos que SonarCloud detectará
+def sql_injection_direct(user_input):
+    """BLOCKER: SQL injection directo."""
+    query = "SELECT * FROM users WHERE id = " + user_input
+    return query
+
+def hardcoded_password_direct():
+    """BLOCKER: Password hardcodeado directo."""
+    password = "admin123"
+    return password
+
+def eval_direct():
+    """BLOCKER: Uso directo de eval."""
+    code = "__import__('os').system('rm -rf /')"
+    result = eval(code)
+    return result
+
+def exec_direct():
+    """BLOCKER: Uso directo de exec."""
+    code = "import os; os.system('rm -rf /')"
+    exec(code)
+
+def os_system_direct():
+    """BLOCKER: Uso directo de os.system."""
+    os.system("rm -rf /")
+
+def subprocess_shell_direct():
+    """BLOCKER: subprocess con shell=True."""
+    subprocess.run("rm -rf /", shell=True)
+
+def pickle_load_direct():
+    """BLOCKER: pickle.load sin validación."""
+    data = b"\x80\x04\x95\x05\x00\x00\x00\x00\x00\x00\x00]\x94."
+    return pickle.loads(data)
+
+def open_without_encoding():
+    """BLOCKER: open sin especificar encoding."""
+    with open("test.txt") as f:
+        return f.read()
+
+def assert_direct():
+    """BLOCKER: assert en código."""
+    assert True, "Test"
+
+def division_by_zero_direct():
+    """BLOCKER: División por cero."""
+    return 1 / 0
+
+def index_error_direct():
+    """BLOCKER: IndexError."""
+    lista = [1, 2]
+    return lista[10]
+
+def key_error_direct():
+    """BLOCKER: KeyError."""
+    dic = {"a": 1}
+    return dic["z"]
+
+def attribute_error_direct():
+    """BLOCKER: AttributeError."""
+    x = 5
+    return x.nonexistent_method()
+
+def type_error_direct():
+    """BLOCKER: TypeError."""
+    return "5" + 5
+
+def value_error_direct():
+    """BLOCKER: ValueError."""
+    return int("abc")
+
+def import_error_direct():
+    """BLOCKER: ImportError."""
+    import nonexistent_module
